@@ -26,7 +26,19 @@ python db.py
 streamlit run streamlit_app.py
 ```
 
-## 今後の追加候補
-- requirements のロックファイル導入
-- pytest や lint など CI 向けスクリプト
-- 連携 API 用のクレデンシャル管理を .env に統一
+## 開発ロードマップ
+### 現状できていること
+- Dev Container・requirements・マイグレーション適用ユーティリティまで整備済み
+- `streamlit_app.py` で写真 / 料理名 / URL / メモを登録でき、`data/` に画像を保存
+- 会話ログや仕様メモ (`recipe_log_mvp_spec.md`) で決定事項を追える状態
+
+### 直近 TODO (v0.1)
+1. Streamlit のサイドページかタブで「登録済みの料理一覧」を表示し、写真やメモをすぐ確認できるようにする
+2. 入力フォームに最低限のバリデーション（料理名かメモのどちらか必須など）とエラーメッセージを追加
+3. README に記載した手順どおりに `streamlit run` → 登録 → DB 確認の手動テストを行い、必要なら手順を追記
+
+### 先のアイデア (v0.2 以降)
+- タグ・お気に入りフラグ・検索フィルタの UI を追加する
+- AI 要約（materials / steps / tips）を生成し `dishes` テーブルの該当カラムへ保存
+- requirements のロックファイル導入や pytest / lint の CI 整備
+- 連携 API 用のクレデンシャル管理を `.env` フローに統一
