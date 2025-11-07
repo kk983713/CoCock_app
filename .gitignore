@@ -1,0 +1,33 @@
+# Python cache/files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+.env/
+.env
+.env.local
+.env.*
+*.env
+!.env.example
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local databases and media payloads
+receipts.db
+*.sqlite3
+*.db
+
+data/*
+!data/.gitkeep
+
+# Streamlit cache/state
+.streamlit/
+
+# Devcontainer build artifacts
+.devcontainer/.venv/

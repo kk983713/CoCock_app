@@ -1,0 +1,26 @@
+{
+  "name": "CoCock_app",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [8501],
+  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+  "features": {},
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "PYTHONPATH": "/workspaces/CoCock_app"
+  }
+}
