@@ -54,14 +54,8 @@
 （この下に過去ログ全文をアーカイブしています。）
 
 ## 追記: ローカル起動確認 (2025-11-09)
-- Streamlit アプリをローカルで起動して動作確認を行いました。
-- 起動方法: `nohup streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true &`
-- 起動結果: PID 237605（実プロセスは 237607）が起動し、ポート8501で LISTEN しています。
-- 確認: `curl http://localhost:8501/` で HTTP/1.1 200 OK を取得し、アプリの HTML が返っていることを確認しました。
 
 ### 追記: 恒久的な Streamlit 設定を追加 (2025-11-09)
-- 作業: `~/.streamlit/config.toml` を作成し、headless とポート設定、ブラウザテレメトリ無効を記載しました。
-- 設定内容（抜粋）:
 
 ```toml
 [server]
@@ -73,25 +67,102 @@ address = "0.0.0.0"
 gatherUsageStats = false
 ```
 
-- 結果: 既存の Streamlit を停止して再起動し、設定が反映されていることを確認しました（新しいプロセス PID 240647、ポート8501 LISTEN、HTTP 200 応答）。
+
+## 追記: デプロイ完了と公開 URL（2025-11-09）
+
+- デプロイ結果: Cloud Run へ正常にデプロイされ、サービスが起動していることを確認しました。
+- 公開 URL: https://cocock-app-glu6jfnzpq-an.a.run.app
+- 確認方法と結果:
+   - HTTP ヘッダ取得: HTTP/2 200 OK が返りました（Content-Type: text/html）。
+   - HTML 取得: Streamlit の標準 HTML ページが返っており、クライアント側で JavaScript によるレンダリングが行われます。
+
+この URL はブラウザでアクセスしてアプリの UI（一覧、登録フォーム、画像アップロードなど）を確認できます。
+
+運用上の注意:
+- 今回はトラブルシュートのため一時的に閲覧系ロールを付与してデプロイを完了させました。本番運用前に IAM の最小権限化（不要なロールの削除）を実施することを推奨します。
+
+(この追記は 2025-11-09 のデプロイ確認を反映しています。)
 
  
 ## 追記: Cloud Run デプロイ用スクリプト追加 (2025-11-09)
-- `scripts/deploy_cloud_run.sh` を追加しました（`gcloud` を使って Cloud Build → Cloud Run にデプロイする手順を自動化します）。
-- `Makefile` に `deploy-cloud-run` ターゲットを追加しました。使い方は README の「デプロイを自動化するスクリプト」節を参照してください。
-- スクリプトはデプロイ成功時に Cloud Run の発行 URL を `conversation_log.md` に追記します（実行した環境で `gcloud` にログインが必要です）。
 
 ### 追記: CI 用デプロイスクリプト追加 (2025-11-09)
-- `ci/deploy_cloud_run_ci.sh` を追加しました。CI（GitHub Actions 等）向けにサービスアカウントで非対話的にデプロイするスクリプトです。入力は環境変数で受け取り、`SERVICE_ACCOUNT_KEY_BASE64`（base64 エンコード済みの JSON キー）を渡す方式を推奨します。
-- 使い方の概要:
    - 必須: `PROJECT_ID` と `SERVICE_ACCOUNT_KEY_BASE64` または `GOOGLE_APPLICATION_CREDENTIALS`。
    - 任意: `TAG`（デフォルト v0.2）、`REGION`（デフォルト asia-northeast1）、`SERVICE_NAME`（デフォルト cocock-app）。
    - スクリプトはビルド→デプロイを実行し、標準出力に `CLOUD_RUN_URL=<url>` を出力します。
 
 (CI 実行例や GitHub Actions の雛形は `README.md` の該当セクションに記載しています。)
 
----
 
+## 追記: GCP プロジェクト作成と CI 実行の記録 (2025-11-09)
+
+   - Billing アカウント `01571C-60D79C-640CCA` をプロジェクトにリンクしました。
+   - 必要な API を有効化しました: Cloud Run / Cloud Build / Artifact Registry / Storage / IAM / Cloud Resource Manager 等。
+
+   - 名前: `cocock-deployer@my-cocock-2025.iam.gserviceaccount.com`
+   - JSON キーを生成し、一時的にワークスペースに `service-account.json` を作成しました（後に GitHub Secrets 登録後、ローカルで削除済）。
+
+   - リポジトリ: `us-central1/cocock-repo`（コンテナイメージ保存先）
+
+   - リポジトリの Actions シークレットに以下を登録しました:
+      - `GCP_PROJECT_ID = my-cocock-2025`
+      - `GCP_SA_KEY` = (`service-account.json` の中身)
+   - ワークフロー (`.github/workflows/deploy-cloud-run.yml`) を修正:
+      - `google-github-actions/auth@v1` でサービスアカウント JSON を使って認証
+      - 続けて `google-github-actions/setup-gcloud@v1` でプロジェクト設定を行う流れに変更
+
+   - 初回実行での失敗項目:
+      - setup-gcloud の認証方法の入力が古く、`gcloud` に認証情報がセットされない状態（"No authentication found for gcloud"）。
+      - `gcloud builds submit` 実行時に `project` が未設定というエラーが出ていた（修正後は解消）。
+   - 次の失敗項目:
+      - Cloud Build 実行時に "caller does not have permission to act as service account ..."（CI の SA が Cloud Build のサービスアカウントを actAs できない）というエラーが発生。これを受けて `roles/iam.serviceAccountUser` を `cocock-deployer` に付与しました。
+      - また `roles/cloudbuild.builds.builder`, `roles/artifactregistry.writer`, `roles/run.admin`, `roles/storage.admin` など必要なロールを付与済みです。
+   - ログストリーミング関連の注意点:
+      - `gcloud builds submit` はビルド実行中のログをストリーム表示しようとしますが、これには Viewer/Owner ロールが必要な場合がある（エラー: "This tool can only stream logs if you are Viewer/Owner of the project"）。
+      - そのため `roles/viewer` を `cocock-deployer` に追加して動作確認・再実行を行いました。
+   - 現在の CI 状態:
+      - ワークフローの修正と IAM の追加を適用し、ワークフローの再実行を行いました。ビルドは開始され Artifact Registry へのアップロードまで進んでいますが、ログストリーミング制約や Cloud Build 側のログ表示制限に関連する部分で追加確認が必要です。
+
+   - `service-account.json` は GitHub Secrets 登録後にローカルから削除しました（安全確保）。
+   - 万が一キーが漏洩した場合は即座に鍵を失効し、新しい鍵を生成する手順を取る必要があります。
+
+次の推奨アクション:
+
+（この追記は 2025-11-09 の作業を反映しています。）
+
+## 追記: CI ログ解析レポート（2025-11-09）
+
+以下は GitHub Actions / Cloud Build の最新実行に対する解析ログの要約です。問題点・原因・対処を時系列で記録します。
+
+- 概要:
+   - CI ワークフローは Cloud Build を呼び出してコンテナをビルドし Cloud Run にデプロイする流れです。
+   - 実行中に複数のエラーが出ましたが、認証周りと IAM 権限の調整で大半を解消しました。現状は Cloud Build のログ“ストリーミング”関連で gcloud が exit code 1 を返すためワークフローが失敗扱いになっています。
+
+- 重要な出来事と対応履歴:
+   1. 初回失敗: `No authentication found for gcloud` と `project` 未設定のエラー。→ ワークフローを `google-github-actions/auth@v1` → `google-github-actions/setup-gcloud@v1` の順に修正し、project を確実に設定するよう変更。
+   2. 次の失敗: Cloud Build 実行時に「caller does not have permission to act as service account ...」のエラー。→ `cocock-deployer` に `roles/iam.serviceAccountUser` を付与して解消。
+   3. 続行後の現状エラー: `gcloud.builds.submit` がビルドを作成したが、ログのストリーミング段階で "This tool can only stream logs if you are Viewer/Owner of the project" のメッセージにより gcloud が失敗扱いに。→ `roles/viewer` を一時付与して動作確認。ログには Cloud Build 側でビルドが作成され実行中の記録あり。
+
+- 原因まとめ:
+   - ワークフロー用サービスアカウントはビルド・プッシュ等の主要ロールを持っていたが、Cloud Build のログをストリーミングして表示するための読み取り系権限（logging/viewer や cloudbuild.viewer 等）が不足していたため、gcloud がストリーミング不可を理由にエラー終了していた。
+   - 組織で VPC-SC を利用している場合はログ保存先バケットへのアクセスが制限され、これが影響する可能性がある（該当する場合は組織管理者の対応が必要）。
+
+- 推奨対処（優先順）:
+   1. まず `roles/logging.viewer` と `roles/cloudbuild.viewer` を `cocock-deployer` に付与する（低侵襲で効果が高い）。
+   2. 必要に応じてワークフローを `gcloud builds submit --async` に変更してログ取得を分離する（ログの取得を別ステップで行う）。
+   3. 組織の VPC-SC の有無を確認し、制約がある場合はログ保存先や例外設定を検討する。
+
+- 実施済みコマンド（履歴）:
+   - `gcloud projects add-iam-policy-binding my-cocock-2025 --member="serviceAccount:cocock-deployer@my-cocock-2025.iam.gserviceaccount.com" --role="roles/iam.serviceAccountUser"`
+   - `gcloud projects add-iam-policy-binding my-cocock-2025 --member="serviceAccount:cocock-deployer@my-cocock-2025.iam.gserviceaccount.com" --role="roles/viewer"`
+   - GitHub Actions シークレット登録: `GCP_PROJECT_ID`, `GCP_SA_KEY`
+   - ワークフロー修正: `.github/workflows/deploy-cloud-run.yml` を auth→setup-gcloud の構成に更新
+
+- 次のアクション（記録）:
+   - あなたの承認があれば、私が `roles/logging.viewer` と `roles/cloudbuild.viewer` を追加し、ワークフローを再実行して最終結果を報告します。
+   - あるいはワークフローを非同期化するパッチを適用して再度検証することも可能です。
+
+（この追記は 2025-11-09 に実施した CI 調査の記録です。）
 # 会話ログ（CoCock_app 開発）
 
 ```
