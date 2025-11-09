@@ -83,6 +83,24 @@ gatherUsageStats = false
 
 (この追記は 2025-11-09 のデプロイ確認を反映しています。)
 
+### デプロイ関連メタ情報
+
+- Git コミット: `ffa9122` (作業ワークスペースで作成・push されたコミット)
+- Push: `origin/main` に push 済み（コミット `ffa9122` を含む）
+- 追記日時: 2025-11-09
+
+### IAM 最小化の実施履歴 (2025-11-09)
+
+- 目的: トラブルシュートのため一時的に付与した閲覧系ロールを削除し、CI に必要最低限のロールだけを残す。
+- 実施内容:
+   - 削除したロール: `roles/viewer`, `roles/logging.viewer`, `roles/cloudbuild.builds.viewer`
+   - 削除した強力な権限: `roles/storage.admin` を `cocock-deployer@my-cocock-2025.iam.gserviceaccount.com` から削除しました（下の操作ログ参照）。
+   - 残したロール（主要）: `roles/cloudbuild.builds.builder`, `roles/artifactregistry.writer`, `roles/iam.serviceAccountUser`, `roles/run.admin`。
+
+注意: `roles/storage.admin` の削除は、Artifact Registry / Cloud Build の動作に影響を与えないことを確認済みです。必要に応じてより限定的なストレージ権限（例: `roles/storage.objectAdmin`）を後から付与する案もあります。
+
+(この節は 2025-11-09 に実施した IAM 最小化の記録です。)
+
  
 ## 追記: Cloud Run デプロイ用スクリプト追加 (2025-11-09)
 
