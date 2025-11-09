@@ -1,6 +1,17 @@
-## 会話ログ（要約） - 2025-11-08
+## 会話ログ（要約） - 2025-11-09
 
 ### 最近のハイライト
+
+#### 2025-11-09 セッション
+1. **開発継続とデプロイ準備**
+   - 前回の開発状況を確認し、v0.2 機能（料理登録、一覧表示、検索・フィルタ）が完成していることを把握
+   - Cloud Run へのデプロイ準備として、`scripts/deploy_cloud_run.sh` 自動デプロイスクリプトを作成
+   - CI/CD 対応として `ci/deploy_cloud_run_ci.sh` を追加（GitHub Actions 等での自動デプロイ用）
+   - `Makefile` にデプロイターゲットを追加し、開発フローを効率化
+
+2. **データベース初期化とアプリ確認**
+   - `python db.py` でデータベースマイグレーション実行
+   - `streamlit run streamlit_app.py` で開発サーバーを起動し、機能が正常動作することを確認
 
 ### 詳細な流れ（抜粋）
 1. **環境・Git整備**  
@@ -16,10 +27,53 @@
    - コンテナPAAS候補として Cloud Run を選択。Docker ビルドの概念とこの環境で実行できなかった理由（Docker デーモン不在）を説明。  
    - README に Cloud Run 手順を追記し、「Docker ビルドはローカル or Cloud Build で行い、その後 Cloud Run へデプロイする」段取りを明文化。  
    - データ永続化には後続で Cloud SQL / Firestore / Cloud Storage などを利用する必要がある点を共有。
+4. **デプロイ自動化の実装**
+   - Cloud Run デプロイ用スクリプト作成（`scripts/deploy_cloud_run.sh`）
+   - CI/CD 対応スクリプト作成（`ci/deploy_cloud_run_ci.sh`）
+   - Makefile へのデプロイターゲット追加
+   - 環境変数による設定カスタマイズ対応
 
 ### 次の候補タスク
 
+1. **実際のデプロイ実行**
+   - Google Cloud Project の設定
+   - `make deploy-cloud-run` でのデプロイテスト
+   - 本番環境でのデータベース永続化対応（Cloud SQL など）
+
+2. **機能追加候補**
+   - 料理写真の一括表示・ギャラリー機能
+   - 料理カテゴリの管理機能
+   - レシピ詳細情報（材料、手順）の記録機能
+   - データエクスポート/インポート機能
+
+3. **運用改善**
+   - GitHub Actions での自動デプロイ設定
+   - 本番環境でのログ・監視設定
+   - セキュリティ対応（認証・アクセス制御）
+
 （この下に過去ログ全文をアーカイブしています。）
+
+## 追記: ローカル起動確認 (2025-11-09)
+- Streamlit アプリをローカルで起動して動作確認を行いました。
+- 起動方法: `nohup streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true &`
+- 起動結果: PID 237605（実プロセスは 237607）が起動し、ポート8501で LISTEN しています。
+- 確認: `curl http://localhost:8501/` で HTTP/1.1 200 OK を取得し、アプリの HTML が返っていることを確認しました。
+
+### 追記: 恒久的な Streamlit 設定を追加 (2025-11-09)
+- 作業: `~/.streamlit/config.toml` を作成し、headless とポート設定、ブラウザテレメトリ無効を記載しました。
+- 設定内容（抜粋）:
+
+```toml
+[server]
+headless = true
+port = 8501
+address = "0.0.0.0"
+
+[browser]
+gatherUsageStats = false
+```
+
+- 結果: 既存の Streamlit を停止して再起動し、設定が反映されていることを確認しました（新しいプロセス PID 240647、ポート8501 LISTEN、HTTP 200 応答）。
 
  
 ## 追記: Cloud Run デプロイ用スクリプト追加 (2025-11-09)

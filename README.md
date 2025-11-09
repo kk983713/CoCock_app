@@ -26,6 +26,47 @@ python db.py
 streamlit run streamlit_app.py
 ```
 
+## ローカル起動の推奨設定（ヘッドレス起動・テレメトリ無効化）
+
+開発時にブラウザが「読み込み中」で止まる問題を避けるため、Streamlit をヘッドレスで起動し、テレメトリ（使用統計）を無効化する設定例を示します。特に Dev Container 内やリモート開発環境では `--server.address 0.0.0.0` を指定するとアクセスが安定します。
+
+1. ユーザーのホームに設定ファイルを作成します（例: `/home/vscode/.streamlit/config.toml`）:
+
+```toml
+[server]
+headless = true
+port = 8501
+address = "0.0.0.0"
+
+[browser]
+gatherUsageStats = false
+```
+
+2. 設定を反映して起動する（ログをファイルに保存する例）:
+
+```bash
+# バックグラウンドで起動してログを保存
+cd /path/to/CoCock_app
+nohup streamlit run streamlit_app.py > streamlit.log 2>&1 &
+
+# すぐに確認する場合（フォアグラウンド）
+streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+```
+
+3. 動作確認
+
+- ブラウザで `http://127.0.0.1:8501` または `http://localhost:8501` にアクセスします。コンテナやリモート環境では `127.0.0.1` が有効な場合があります。
+- サーバが起動しているかは次のコマンドで確認できます:
+
+```bash
+ss -ltnp | grep 8501
+# または
+curl -I http://localhost:8501
+```
+
+備考: `.streamlit/config.toml` による設定はユーザー単位で効くため、チームメンバーそれぞれが同様の設定を作成する必要があります。CI／本番環境では不要または別設定で運用してください。
+
+
 ## ローカル接続時の注意: localhost と 127.0.0.1 の違い
 
 開発中にブラウザが「読み込み中（バッファリング）」で止まる場合、`localhost` と `127.0.0.1` の挙動差が原因になることがあります。
