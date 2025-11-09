@@ -18,67 +18,91 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
-
-      - name: Run DB migrations (if any)
-        run: |
-          if [ -f db.py ]; then python db.py || true; fi
-
-      - name: Seed public gallery sample (if none)
+      - name: Check public image files exist
+        id: check_images
+        continue-on-error: true
         run: |
           python - <<'PY'
-import sqlite3, pathlib
-db = pathlib.Path('receipts.db')
-if db.exists():
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='dishes'")
-    if cur.fetchone()[0]==1:
-        cur.execute('SELECT COUNT(1) FROM dishes WHERE is_public=1')
-        cnt = cur.fetchone()[0]
-        if cnt==0:
-            cur.execute("INSERT INTO dishes (name,memo_user,tags,favorite,is_public,created_at,updated_at) VALUES (?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", ('CI Test Dish','Seeded by CI','ci-test',0))
-            conn.commit()
-    conn.close()
-PY
-
-      - name: Start Streamlit (background)
-        run: |
-          chmod +x ./streamlit_app.py || true
-          nohup streamlit run streamlit_app.py --server.port 8501 > streamlit-ci.log 2>&1 &
-          echo $! > streamlit.pid
-          sleep 6
-
-      - name: Smoke test HTTP
-        run: |
-          if ! command -v curl >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y curl; fi
-          set -e
-          # try root
-          for i in 1 2 3 4 5; do
-            sleep 1
-            if curl -sSf http://127.0.0.1:8501/ -o index.html; then break; fi
-          done
-          echo "== index.html head =="
-          head -n 40 index.html || true
-          # try to fetch a static JS referenced by index.html to ensure assets are served
-          JSFILE=$(grep -oP 'src="\./static/js/\K[^"]+' index.html | head -n1 || true)
-          if [ -n "$JSFILE" ]; then
-            echo "Fetching static/js/$JSFILE"
-            curl -sSf "http://127.0.0.1:8501/static/js/$JSFILE" -o /dev/null
-          else
-            echo "No static JS file found in index.html; skipping asset fetch"
-          fi
-
-    - name: Check public image files exist
-    id: check_images
-    continue-on-error: true
-    run: |
-      python - <<'PY'
 import sqlite3, json, pathlib, sys
 db='receipts.db'
 missing=[]
 if pathlib.Path(db).exists():
+    conn=sqlite3.connect(db)
+    cur=conn.cursor()
+    try:
+        cur.execute("SELECT id, photo_path FROM dishes WHERE is_public=1")
+        for id, p in cur.fetchall():
+            if not p:
+                continue
+            if not pathlib.Path(p).exists():
+                missing.append({'id': id, 'path': p})
+    except Exception as e:
+        print('DB error', e)
+    finally:
+        conn.close()
+else:
+    print('receipts.db not found; skipping image checks')
+open('missing.json','w').write(json.dumps(missing))
+print(json.dumps(missing))
+if missing:
+    sys.exit(1)
+PY
+
+      - name: Create GitHub Issue if images missing
+        if: steps.check_images.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_LABELS: ${{ secrets.ISSUE_LABELS }}
+          ISSUE_ASSIGNEES: ${{ secrets.ISSUE_ASSIGNEES }}
+        run: |
+          python - <<'PY'
+import os, json, urllib.request
+token=os.environ.get('GITHUB_TOKEN')
+repo=os.environ.get('REPO')
+missing_file='missing.json'
+labels=os.environ.get('ISSUE_LABELS','')
+assignees=os.environ.get('ISSUE_ASSIGNEES','')
+run_url = f"{os.environ.get('GITHUB_SERVER_URL','https://github.com')}/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
+if not token:
+    print('No GITHUB_TOKEN; cannot create issue')
+    raise SystemExit(0)
+if not os.path.exists(missing_file):
+    print('No missing.json; nothing to report')
+    raise SystemExit(0)
+missing=json.load(open(missing_file))
+title='CI: Missing public images in gallery'
+body='The CI smoke test detected missing public images.\n\nRun: '+run_url+'\n\n' + json.dumps(missing, indent=2)
+payload={'title': title, 'body': body}
+if labels:
+    payload['labels']=[l.strip() for l in labels.split(',') if l.strip()]
+if assignees:
+    payload['assignees']=[a.strip() for a in assignees.split(',') if a.strip()]
+data=json.dumps(payload).encode()
+req=urllib.request.Request(f'https://api.github.com/repos/{repo}/issues', data=data, headers={
+    'Authorization': f'token {token}', 'Content-Type': 'application/json', 'User-Agent': 'ci-script'
+})
+try:
+    resp=urllib.request.urlopen(req)
+    print('Created issue, status', resp.status)
+except Exception as e:
+    print('Failed to create issue', e)
+PY
+
+      - name: Slack notify if images missing
+        if: steps.check_images.outcome == 'failure'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK}" ]; then echo "No SLACK_WEBHOOK provided; skipping Slack notify"; exit 0; fi
+          MISSING_JSON='missing.json'
+          if [ ! -f "$MISSING_JSON" ]; then echo "no missing.json; skipping"; exit 0; fi
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          MSG="CI detected missing public images in ${REPO}: ${RUN_URL}"
+          # simple payload with text. Requires jq installed on runner (ubuntu-latest has jq)
+          PAYLOAD=$(jq -n --arg text "$MSG" '{text: $text}')
+          curl -sSf -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK" || true
   conn=sqlite3.connect(db)
   cur=conn.cursor()
   try:
