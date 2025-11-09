@@ -45,6 +45,11 @@ def split_tags_field(tags_field: str | None) -> list[str]:
     return [t.strip() for t in tags_field.split(",") if t.strip()]
 
 
+def is_valid_recipe_url(url: str) -> bool:
+    lower = url.lower()
+    return lower.startswith("http://") or lower.startswith("https://")
+
+
 def insert_dish(
     name: str,
     recipe_url: str | None,
@@ -52,23 +57,26 @@ def insert_dish(
     tags_raw: str,
     favorite: bool,
     photo_file,
+    is_public: bool = False,
 ) -> int:
     tags_text = tags_to_text(parse_tags_input(tags_raw))
+    photo_path: Path | None = None
 
     conn = get_connection()
     try:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO dishes (name, memo_user, recipe_url, tags, favorite)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO dishes (name, memo_user, recipe_url, tags, favorite, is_public)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (name, memo_user, recipe_url, tags_text, 1 if favorite else 0),
+            (name, memo_user, recipe_url, tags_text, 1 if favorite else 0, 1 if is_public else 0),
         )
         dish_id = cur.lastrowid
 
         if photo_file is not None:
-            photo_path = build_dish_photo_path(dish_id, photo_file.name)
+            sanitized_filename = Path(photo_file.name).name.lower()
+            photo_path = build_dish_photo_path(dish_id, sanitized_filename)
             with photo_path.open("wb") as f:
                 f.write(photo_file.getbuffer())
             cur.execute(
@@ -76,8 +84,17 @@ def insert_dish(
                 (str(photo_path), dish_id),
             )
 
+        # ensure is_public persisted for photo uploads as well
+        if is_public:
+            cur.execute("UPDATE dishes SET is_public = ? WHERE id = ?", (1, dish_id))
+
         conn.commit()
         return dish_id
+    except Exception:
+        conn.rollback()
+        if photo_path and photo_path.exists():
+            photo_path.unlink(missing_ok=True)
+        raise
     finally:
         conn.close()
 
@@ -99,6 +116,7 @@ def fetch_dishes(
     keyword: str = "",
     tags: list[str] | None = None,
     favorite_only: bool = False,
+    public_only: bool = False,
     limit: int = 50,
 ) -> list[sqlite3.Row]:
     tags = tags or []
@@ -120,6 +138,9 @@ def fetch_dishes(
 
         if favorite_only:
             where.append("favorite = 1")
+
+        if public_only:
+            where.append("is_public = 1")
 
         sql = f"""
             SELECT *
@@ -206,7 +227,7 @@ def main() -> None:
     st.title("🍳 レシピログ v0.2")
     st.caption("写真・メモ・タグを 1 分で記録して、すぐに検索できる実験用アプリ")
 
-    tabs = st.tabs(["登録フォーム", "一覧 / 検索"])
+    tabs = st.tabs(["登録フォーム", "一覧 / 検索", "公開ギャラリー"])
 
     with tabs[0]:
         with st.form("dish_entry_form"):
@@ -221,29 +242,46 @@ def main() -> None:
                 help="和食,10分,鶏肉 のようにカンマで区切る。スペースや改行でも分割されます。",
             )
             favorite_flag = st.toggle("また作りたい（お気に入り）に登録する", value=False)
+            is_public_flag = st.checkbox("公開する（ギャラリーに表示）", value=False)
             memo_user = st.text_area(
                 "メモ",
                 placeholder="作った理由や工夫などを書いておけます。",
                 height=160,
             )
 
-            submitted = st.form_submit_button("登録する")
+            preview_name = name.strip()
+            preview_memo = memo_user.strip()
+            can_submit = bool(preview_name or preview_memo)
+            if not can_submit:
+                st.info("料理名かメモのどちらかは必須です。")
+            if recipe_url.strip() and not is_valid_recipe_url(recipe_url.strip()):
+                st.warning("参考レシピ URL は http:// または https:// から始めてください。")
+
+            submitted = st.form_submit_button("登録する", disabled=not can_submit)
             if submitted:
                 cleaned_name = name.strip()
                 cleaned_url = recipe_url.strip() or None
                 cleaned_memo = memo_user.strip()
+                errors: list[str] = []
+                if cleaned_url and not is_valid_recipe_url(cleaned_url):
+                    errors.append("参考レシピ URL は http:// または https:// から始めてください。")
 
-                with st.spinner("保存しています…"):
-                    dish_id = insert_dish(
-                        cleaned_name,
-                        cleaned_url,
-                        cleaned_memo,
-                        tags_raw,
-                        favorite_flag,
-                        photo_file,
-                    )
-                st.session_state["last_saved_id"] = dish_id
-                st.success("料理を登録しました。")
+                if errors:
+                    for msg in errors:
+                        st.error(msg)
+                else:
+                    with st.spinner("保存しています…"):
+                        dish_id = insert_dish(
+                                cleaned_name,
+                                cleaned_url,
+                                cleaned_memo,
+                                tags_raw,
+                                favorite_flag,
+                                photo_file,
+                                is_public=is_public_flag,
+                            )
+                    st.session_state["last_saved_id"] = dish_id
+                    st.success("料理を登録しました。")
 
         if st.session_state["last_saved_id"]:
             st.info(
@@ -288,6 +326,19 @@ def main() -> None:
             st.info("まだ料理が登録されていないか、条件に一致する料理がありません。")
         else:
             for row in dishes:
+                render_dish_card(row)
+
+    with tabs[2]:
+        st.subheader("公開ギャラリー")
+        st.caption("公開フラグが立っているレシピのみ表示します。")
+
+        # simple gallery: show up to 200 public items
+        public_items = fetch_dishes(public_only=True, limit=200)
+        st.caption(f"{len(public_items)} 件公開中（最大200件表示）")
+        if not public_items:
+            st.info("公開されているレシピはありません。登録フォームから公開してみましょう。")
+        else:
+            for row in public_items:
                 render_dish_card(row)
 
 

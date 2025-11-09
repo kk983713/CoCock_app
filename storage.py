@@ -34,3 +34,17 @@ def build_dish_photo_path(dish_id: int, original_filename: Optional[str] = None)
     dish_dir.mkdir(parents=True, exist_ok=True)
     suffix = _sanitize_suffix(original_filename)
     return dish_dir / f"cover{suffix}"
+
+
+def public_url_for_photo(photo_path: Path) -> str:
+    """公開用の URL / パスを返すヘルパ。
+
+    現在はローカルファイルパスをそのまま返します。将来的に GCS/S3 を使う場合は
+    環境変数で切り替えられるようにここを集約してください。
+    """
+    # NOTE: Streamlit の `st.image()` はローカルパスや URL を受け取れるため
+    # ここではシンプルに文字列化して返します。
+    try:
+        return str(photo_path)
+    except Exception:
+        return ""
