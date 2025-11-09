@@ -25,31 +25,31 @@ jobs:
         id: check_images
         continue-on-error: true
         run: |
-          python - <<'PY'
-            import sqlite3, json, pathlib, sys
-            db='receipts.db'
-            missing=[]
-            if pathlib.Path(db).exists():
-                conn=sqlite3.connect(db)
-                cur=conn.cursor()
-                try:
-                    cur.execute("SELECT id, photo_path FROM dishes WHERE is_public=1")
-                    for id, p in cur.fetchall():
-                        if not p:
-                            continue
-                        if not pathlib.Path(p).exists():
-                            missing.append({'id': id, 'path': p})
-                except Exception as e:
-                    print('DB error', e)
-                finally:
-                    conn.close()
-            else:
-                print('receipts.db not found; skipping image checks')
-            open('missing.json','w').write(json.dumps(missing))
-            print(json.dumps(missing))
-            if missing:
-                sys.exit(1)
-          PY
+      python - <<'PY'
+import sqlite3, json, pathlib, sys
+db='receipts.db'
+missing=[]
+if pathlib.Path(db).exists():
+  conn=sqlite3.connect(db)
+  cur=conn.cursor()
+  try:
+    cur.execute("SELECT id, photo_path FROM dishes WHERE is_public=1")
+    for id, p in cur.fetchall():
+      if not p:
+        continue
+      if not pathlib.Path(p).exists():
+        missing.append({'id': id, 'path': p})
+  except Exception as e:
+    print('DB error', e)
+  finally:
+    conn.close()
+else:
+  print('receipts.db not found; skipping image checks')
+open('missing.json','w').write(json.dumps(missing))
+print(json.dumps(missing))
+if missing:
+  sys.exit(1)
+PY
 
       - name: Create GitHub Issue if images missing
         if: steps.check_images.outcome == 'failure'
@@ -59,38 +59,38 @@ jobs:
           ISSUE_LABELS: ${{ secrets.ISSUE_LABELS }}
           ISSUE_ASSIGNEES: ${{ secrets.ISSUE_ASSIGNEES }}
         run: |
-          python - <<'PY'
-            import os, json, urllib.request
-            token=os.environ.get('GITHUB_TOKEN')
-            repo=os.environ.get('REPO')
-            missing_file='missing.json'
-            labels=os.environ.get('ISSUE_LABELS','')
-            assignees=os.environ.get('ISSUE_ASSIGNEES','')
-            run_url = f"{os.environ.get('GITHUB_SERVER_URL','https://github.com')}/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
-            if not token:
-                print('No GITHUB_TOKEN; cannot create issue')
-                raise SystemExit(0)
-            if not os.path.exists(missing_file):
-                print('No missing.json; nothing to report')
-                raise SystemExit(0)
-            missing=json.load(open(missing_file))
-            title='CI: Missing public images in gallery'
-            body='The CI smoke test detected missing public images.\n\nRun: '+run_url+'\n\n' + json.dumps(missing, indent=2)
-            payload={'title': title, 'body': body}
-            if labels:
-                payload['labels']=[l.strip() for l in labels.split(',') if l.strip()]
-            if assignees:
-                payload['assignees']=[a.strip() for a in assignees.split(',') if a.strip()]
-            data=json.dumps(payload).encode()
-            req=urllib.request.Request(f'https://api.github.com/repos/{repo}/issues', data=data, headers={
-                'Authorization': f'token {token}', 'Content-Type': 'application/json', 'User-Agent': 'ci-script'
-            })
-            try:
-                resp=urllib.request.urlopen(req)
-                print('Created issue, status', resp.status)
-            except Exception as e:
-                print('Failed to create issue', e)
-          PY
+      python - <<'PY'
+import os, json, urllib.request
+token=os.environ.get('GITHUB_TOKEN')
+repo=os.environ.get('REPO')
+missing_file='missing.json'
+labels=os.environ.get('ISSUE_LABELS','')
+assignees=os.environ.get('ISSUE_ASSIGNEES','')
+run_url = f"{os.environ.get('GITHUB_SERVER_URL','https://github.com')}/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
+if not token:
+  print('No GITHUB_TOKEN; cannot create issue')
+  raise SystemExit(0)
+if not os.path.exists(missing_file):
+  print('No missing.json; nothing to report')
+  raise SystemExit(0)
+missing=json.load(open(missing_file))
+title='CI: Missing public images in gallery'
+body='The CI smoke test detected missing public images.\n\nRun: '+run_url+'\n\n' + json.dumps(missing, indent=2)
+payload={'title': title, 'body': body}
+if labels:
+  payload['labels']=[l.strip() for l in labels.split(',') if l.strip()]
+if assignees:
+  payload['assignees']=[a.strip() for a in assignees.split(',') if a.strip()]
+data=json.dumps(payload).encode()
+req=urllib.request.Request(f'https://api.github.com/repos/{repo}/issues', data=data, headers={
+  'Authorization': f'token {token}', 'Content-Type': 'application/json', 'User-Agent': 'ci-script'
+})
+try:
+  resp=urllib.request.urlopen(req)
+  print('Created issue, status', resp.status)
+except Exception as e:
+  print('Failed to create issue', e)
+PY
 
       - name: Slack notify if images missing
         if: steps.check_images.outcome == 'failure'
