@@ -1,0 +1,63 @@
+name: E2E tests
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libgtk-3-0 libxss1 libasound2
+
+      - name: Install pip packages
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # install playwright and browsers if not present
+          python -m pip install playwright
+          python -m playwright install --with-deps
+
+      - name: Initialize DB (migrations + seed)
+        run: |
+          python scripts/test_db_init.py
+
+      - name: Start Streamlit in background
+        run: |
+          ./scripts/start_streamlit.sh &
+          # allow time for Streamlit to start
+          sleep 4
+
+      - name: Run E2E wrapper
+        run: |
+          set -eux
+          bash tests/run_e2e.sh
+        env:
+          CI: true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            e2e_page_content.html
+            e2e_page_content2.html
+            e2e_after_register.png
+            e2e_after_login.png
+            e2e_after_submit.png
+            e2e_after_submit2.png
+            streamlit.log
