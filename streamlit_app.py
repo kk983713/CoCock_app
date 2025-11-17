@@ -622,27 +622,39 @@ def main() -> None:
                                 return False
                             return (datetime.utcnow() - dt).total_seconds() < max_age_seconds
 
+                        # If the session is not already marked verified, attempt an immediate
+                        # server-side verification using any token candidate we have (from
+                        # query params or previous capture). This allows users who arrived
+                        # with a token to post without using the sidebar manual step.
                         if not _is_turnstile_verified_local(int(verify_ttl_hours * 3600)):
-                            st.error("このブラウザは Turnstile 未検証です。サイドバーで検証してから再度送信してください。")
-                            submitted = False
+                            token_candidate = (
+                                st.session_state.get("turnstile_token")
+                                or st.session_state.get("turnstile_token_candidate")
+                            )
+                            if token_candidate:
+                                try:
+                                    resp = requests.post(
+                                        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                                        data={"secret": turnstile_secret, "response": token_candidate},
+                                        timeout=5,
+                                    )
+                                    j = resp.json()
+                                    if j.get("success"):
+                                        # mark session as verified and continue
+                                        st.session_state["turnstile_verified_at"] = datetime.utcnow().isoformat()
+                                        st.success("Turnstile 検証に成功しました（自動）。")
+                                    else:
+                                        st.error("Turnstile の検証に失敗しました。投稿はブロックされました。")
+                                        submitted = False
+                                except Exception as e:
+                                    st.error(f"Turnstile の検証中にエラーが発生しました: {e}")
+                                    submitted = False
+                            else:
+                                st.error("このブラウザは Turnstile 未検証です。サイドバーで検証してから再度送信してください。")
+                                submitted = False
                     else:
                         st.warning("TURNSTILE_SECRET 未設定のため、開発モードで検証をスキップします。")
-                # If token provided (legacy) verify with Cloudflare
-                if submitted and turnstile_secret and st.session_state.get("turnstile_token"):
-                    turnstile_token = st.session_state.get("turnstile_token")
-                    try:
-                        resp = requests.post(
-                            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-                            data={"secret": turnstile_secret, "response": turnstile_token},
-                            timeout=5,
-                        )
-                        j = resp.json()
-                        if not j.get("success"):
-                            st.error("Turnstile の検証に失敗しました。投稿はブロックされました。")
-                            submitted = False
-                    except Exception as e:
-                        st.error(f"Turnstile の検証中にエラーが発生しました: {e}")
-                        submitted = False
+                
                 # honeypot チェック
                 if honeypot_website and honeypot_website.strip():
                     # ログに残す（マイグレーションがない場合は無視される）
