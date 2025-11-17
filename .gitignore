@@ -31,3 +31,11 @@ data/*
 
 # Devcontainer build artifacts
 .devcontainer/.venv/
+ 
+# Ignore runtime artifacts, logs and generated e2e artifacts
+*.log
+*.pid
+e2e_after_*.png
+e2e_page_content*.html
+turnstile_test.html
+tests/e2e/artifacts/
