@@ -13,7 +13,17 @@ import uuid
 from datetime import datetime
 import os
 import requests
-from passlib.hash import pbkdf2_sha256 as pwd_hasher
+from passlib.context import CryptContext
+
+# Password hashing context: prefer argon2, keep pbkdf2_sha256 for existing hashes
+pwd_ctx = CryptContext(
+    schemes=["argon2", "pbkdf2_sha256"],
+    default="argon2",
+    pbkdf2_sha256__rounds=29000,
+    argon2__memory_cost=65536,
+    argon2__time_cost=2,
+    argon2__parallelism=4,
+)
 
 
 def get_connection() -> sqlite3.Connection:
@@ -466,12 +476,8 @@ def main() -> None:
                     if cur.fetchone():
                         st.error("そのユーザー名は既に使われています。別の名前を選んでください。")
                     else:
-                        # Use PBKDF2-SHA256 for development PoC hashing to avoid
-                        # environment-specific bcrypt backend issues (bcrypt may
-                        # enforce a 72-byte input limit during backend detection
-                        # which can raise at import/runtime). PBKDF2-SHA256 is
-                        # suitable for PoC and does not have that limitation.
-                        ph = pwd_hasher.hash(reg_pass)
+                        # Hash password using CryptContext (argon2 preferred).
+                        ph = pwd_ctx.hash(reg_pass)
                         cur.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (reg_user, ph))
                         conn.commit()
                         st.success("登録しました。ログインしてください。")
@@ -499,12 +505,34 @@ def main() -> None:
                         ph = row[1]
                         if not ph:
                             st.error("このアカウントはパスワードが設定されていません。")
-                        elif pwd_hasher.verify(login_pass, ph):
-                            st.session_state["user_id"] = uid
-                            st.session_state["username"] = login_user
-                            st.success("ログインしました。投稿フォームに戻って投稿できます。")
                         else:
-                            st.error("パスワードが違います。")
+                            verified = False
+                            try:
+                                verified = pwd_ctx.verify(login_pass, ph)
+                            except Exception:
+                                verified = False
+
+                            if verified:
+                                # If stored hash does not match current policy, re-hash
+                                try:
+                                    if pwd_ctx.needs_update(ph):
+                                        new_hash = pwd_ctx.hash(login_pass)
+                                        cur.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, uid))
+                                        conn.commit()
+                                except Exception:
+                                    # Do not block login if re-hash / DB update fails; log to debug file
+                                    try:
+                                        debug_log = Path("/workspaces/CoCock_app") / "turnstile_debug.log"
+                                        with debug_log.open("a", encoding="utf-8") as df:
+                                            df.write(f"{datetime.utcnow().isoformat()} WARN rehash_failed uid={uid}\n")
+                                    except Exception:
+                                        pass
+
+                                st.session_state["user_id"] = uid
+                                st.session_state["username"] = login_user
+                                st.success("ログインしました。投稿フォームに戻って投稿できます。")
+                            else:
+                                st.error("パスワードが違います。")
                 finally:
                     conn.close()
 
