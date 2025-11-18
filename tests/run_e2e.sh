@@ -33,8 +33,8 @@ if [ -f "$ROOT/streamlit.pid" ]; then
   if [ -n "$PID_EXISTING" ] && kill -0 "$PID_EXISTING" 2>/dev/null; then
     echo "Streamlit already running with PID $PID_EXISTING; skipping start."
   else
-    echo "Found stale pidfile or process not running; starting Streamlit."
-    $ROOT/scripts/start_streamlit.sh
+  echo "Found stale pidfile or process not running; starting Streamlit."
+  bash "$ROOT/scripts/start_streamlit.sh"
     STARTED_STREAMLIT=true
     sleep 3
   fi
@@ -43,8 +43,8 @@ else
   if nc -z 127.0.0.1 8501 2>/dev/null; then
     echo "Port 8501 already in use; assuming Streamlit running."
   else
-    echo "No streamlit pidfile and port free; starting Streamlit."
-    $ROOT/scripts/start_streamlit.sh
+  echo "No streamlit pidfile and port free; starting Streamlit."
+  bash "$ROOT/scripts/start_streamlit.sh"
     STARTED_STREAMLIT=true
     sleep 3
   fi
@@ -106,7 +106,7 @@ ls -alh "$ARTDIR" || echo "(no artifacts found)"
 echo "4) Stop Streamlit"
 if [ "$STARTED_STREAMLIT" = true ]; then
   echo "Stopping Streamlit started by this script"
-  $ROOT/scripts/stop_streamlit.sh || true
+  bash "$ROOT/scripts/stop_streamlit.sh" || true
 else
   echo "Not stopping Streamlit because this script did not start it"
 fi
