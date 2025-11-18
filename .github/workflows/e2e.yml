@@ -47,6 +47,8 @@ jobs:
           bash tests/run_e2e.sh
         env:
           CI: true
+          # In CI we mock Turnstile verification to avoid external dependency.
+          TURNSTILE_TEST_MODE: '1'
 
       - name: Upload artifacts
         if: always()
