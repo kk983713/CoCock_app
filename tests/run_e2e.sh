@@ -71,7 +71,45 @@ for i in $(seq 1 10); do
   sleep 1
 done
 
+$ROOT/scripts/stop_streamlit.sh || true
+echo "3c) Collect artifacts for upload"
+ARTDIR="$ROOT/tests/e2e/artifacts"
+mkdir -p "$ARTDIR"
+
+# list of legacy artifacts at repo root to collect if present
+LEGACY_FILES=(
+  "$ROOT/e2e_page_content.html"
+  "$ROOT/e2e_page_content2.html"
+  "$ROOT/e2e_after_register.png"
+  "$ROOT/e2e_after_login.png"
+  "$ROOT/e2e_after_submit.png"
+  "$ROOT/e2e_after_submit2.png"
+  "$ROOT/streamlit.log"
+)
+
+for f in "${LEGACY_FILES[@]}"; do
+  if [ -f "$f" ]; then
+    echo "Collecting $f -> $ARTDIR"
+    mv "$f" "$ARTDIR/" || cp -a "$f" "$ARTDIR/" || true
+  fi
+done
+
+# Also pick up anything under tests/e2e/artifacts already produced
+if [ -d "$ROOT/tests/e2e/artifacts" ]; then
+  echo "Ensuring artifacts directory exists: $ARTDIR"
+  mkdir -p "$ARTDIR"
+fi
+
+echo "Artifacts present (root $ARTDIR):"
+ls -alh "$ARTDIR" || echo "(no artifacts found)"
+
 echo "4) Stop Streamlit"
+if [ "$STARTED_STREAMLIT" = true ]; then
+  echo "Stopping Streamlit started by this script"
+  $ROOT/scripts/stop_streamlit.sh || true
+else
+  echo "Not stopping Streamlit because this script did not start it"
+fi
 if [ "$STARTED_STREAMLIT" = true ]; then
   echo "Stopping Streamlit started by this script"
   $ROOT/scripts/stop_streamlit.sh || true
