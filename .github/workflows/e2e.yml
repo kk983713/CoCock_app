@@ -21,7 +21,13 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libgtk-3-0 libxss1 libasound2
+          # On Ubuntu 24.04 (noble) some package names changed (libasound2 -> libasound2t64).
+          # Install common dependencies needed by Playwright; use the correct package name
+          # for the runner. If a package is unavailable, apt will fail — ensure names match the distro.
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libgtk-3-0 libxss1 libasound2t64 || \
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libgtk-3-0 libxss1
 
       - name: Install pip packages
         run: |
