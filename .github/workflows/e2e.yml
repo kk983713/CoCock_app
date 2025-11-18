@@ -56,6 +56,7 @@ jobs:
         with:
           name: e2e-artifacts
           path: |
+            # root-level artifacts the E2E scripts write (legacy)
             e2e_page_content.html
             e2e_page_content2.html
             e2e_after_register.png
@@ -63,3 +64,5 @@ jobs:
             e2e_after_submit.png
             e2e_after_submit2.png
             streamlit.log
+            # new: collect any artifacts produced under tests/e2e/artifacts/
+            tests/e2e/artifacts/**

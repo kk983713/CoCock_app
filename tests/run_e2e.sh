@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VENV_PY="$ROOT/.venv/bin/python"
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  VENV_PY="$ROOT/.venv/bin/python"
+else
+  # Fallback to system python in CI where a virtualenv may not exist
+  VENV_PY="$(command -v python || command -v python3)"
+fi
+
+if [ -z "$VENV_PY" ]; then
+  echo "ERROR: No python executable found (expected .venv or system python)" >&2
+  exit 100
+fi
 
 echo "1) Initialize DB and seed test user"
 $VENV_PY $ROOT/scripts/test_db_init.py
