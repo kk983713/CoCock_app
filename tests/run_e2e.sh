@@ -4,13 +4,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -x "$ROOT/.venv/bin/python" ]; then
   VENV_PY="$ROOT/.venv/bin/python"
 else
+  # Debug info: print PATH and python detection results to help CI troubleshooting
+  echo "DEBUG: PATH=$PATH"
+  echo "DEBUG: command -v python -> $(command -v python || true)"
+  echo "DEBUG: command -v python3 -> $(command -v python3 || true)"
+  echo "DEBUG: which python -> $(which python 2>/dev/null || true)"
+  echo "DEBUG: which python3 -> $(which python3 2>/dev/null || true)"
+
   # Fallback to system python in CI where a virtualenv may not exist
-  VENV_PY="$(command -v python || command -v python3)"
+  VENV_PY="$(command -v python || command -v python3 || command -v python3.11 || true)"
 fi
 
 if [ -z "$VENV_PY" ]; then
-  echo "ERROR: No python executable found (expected .venv or system python)" >&2
+  echo "ERROR: No python executable found (expected .venv or system python). PATH=$PATH" >&2
   exit 100
+else
+  echo "Using python executable: $VENV_PY"
 fi
 
 echo "1) Initialize DB and seed test user"
