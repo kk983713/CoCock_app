@@ -26,9 +26,29 @@ echo "1) Initialize DB and seed test user"
 $VENV_PY $ROOT/scripts/test_db_init.py
 
 echo "2) Start Streamlit"
-$ROOT/scripts/start_streamlit.sh
-# give streamlit a moment to start
-sleep 3
+STARTED_STREAMLIT=false
+# If streamlit is already running (pidfile exists and process alive), skip starting.
+if [ -f "$ROOT/streamlit.pid" ]; then
+  PID_EXISTING=$(cat "$ROOT/streamlit.pid" || true)
+  if [ -n "$PID_EXISTING" ] && kill -0 "$PID_EXISTING" 2>/dev/null; then
+    echo "Streamlit already running with PID $PID_EXISTING; skipping start."
+  else
+    echo "Found stale pidfile or process not running; starting Streamlit."
+    $ROOT/scripts/start_streamlit.sh
+    STARTED_STREAMLIT=true
+    sleep 3
+  fi
+else
+  # also check if something is listening on 8501 (maybe started outside pidfile)
+  if nc -z 127.0.0.1 8501 2>/dev/null; then
+    echo "Port 8501 already in use; assuming Streamlit running."
+  else
+    echo "No streamlit pidfile and port free; starting Streamlit."
+    $ROOT/scripts/start_streamlit.sh
+    STARTED_STREAMLIT=true
+    sleep 3
+  fi
+fi
 
 EXIT_CODE=0
 
@@ -52,7 +72,12 @@ for i in $(seq 1 10); do
 done
 
 echo "4) Stop Streamlit"
-$ROOT/scripts/stop_streamlit.sh || true
+if [ "$STARTED_STREAMLIT" = true ]; then
+  echo "Stopping Streamlit started by this script"
+  $ROOT/scripts/stop_streamlit.sh || true
+else
+  echo "Not stopping Streamlit because this script did not start it"
+fi
 
 if [ $PYRC -eq 0 ]; then
   echo "E2E overall: SUCCESS (DB confirmed)"
