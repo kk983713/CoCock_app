@@ -32,6 +32,34 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def verify_turnstile_token(token: str, timeout: float = 5.0) -> bool:
+    """Verify a Turnstile token with Cloudflare, or succeed in test mode.
+
+    Returns True if verification is considered successful.
+    """
+    # CI / E2E test mode: treat as success without calling external API
+    test_mode = os.environ.get("TURNSTILE_TEST_MODE")
+    if test_mode and test_mode.lower() in ("1", "true", "yes"):
+        return True
+
+    secret = os.environ.get("TURNSTILE_SECRET")
+    if not secret:
+        # No secret configured: do not attempt real verification here.
+        return False
+
+    try:
+        resp = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": secret, "response": token},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        j = resp.json()
+        return bool(j.get("success"))
+    except Exception:
+        return False
+
+
 def parse_tags_input(raw: str) -> list[str]:
     """カンマ / 改行 / 全角読点で区切られたタグ文字列を配列へ整形。"""
     if not raw:
@@ -422,20 +450,12 @@ def main() -> None:
                 st.error("token を入力してください（PoC）。")
             else:
                 if turnstile_secret:
-                    try:
-                        resp = requests.post(
-                            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-                            data={"secret": turnstile_secret, "response": verify_token},
-                            timeout=5,
-                        )
-                        j = resp.json()
-                        if j.get("success"):
-                            st.session_state["turnstile_verified_at"] = datetime.utcnow().isoformat()
-                            st.success("Turnstile 検証に成功しました。セッションを信頼します。")
-                        else:
-                            st.error("Turnstile の検証に失敗しました: " + str(j))
-                    except Exception as e:
-                        st.error(f"検証中にエラーが発生しました: {e}")
+                    ok = verify_turnstile_token(verify_token)
+                    if ok:
+                        st.session_state["turnstile_verified_at"] = datetime.utcnow().isoformat()
+                        st.success("Turnstile 検証に成功しました。セッションを信頼します。")
+                    else:
+                        st.error("Turnstile の検証に失敗しました（または接続エラー）。")
                 else:
                     # 開発時: secret 未設定ならトークンを受け入れてセッションを立てる（安全性に注意）
                     st.warning("TURNSTILE_SECRET が設定されていません — 開発モードで検証をスキップします。")
@@ -632,22 +652,13 @@ def main() -> None:
                                 or st.session_state.get("turnstile_token_candidate")
                             )
                             if token_candidate:
-                                try:
-                                    resp = requests.post(
-                                        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-                                        data={"secret": turnstile_secret, "response": token_candidate},
-                                        timeout=5,
-                                    )
-                                    j = resp.json()
-                                    if j.get("success"):
-                                        # mark session as verified and continue
-                                        st.session_state["turnstile_verified_at"] = datetime.utcnow().isoformat()
-                                        st.success("Turnstile 検証に成功しました（自動）。")
-                                    else:
-                                        st.error("Turnstile の検証に失敗しました。投稿はブロックされました。")
-                                        submitted = False
-                                except Exception as e:
-                                    st.error(f"Turnstile の検証中にエラーが発生しました: {e}")
+                                ok = verify_turnstile_token(token_candidate)
+                                if ok:
+                                    # mark session as verified and continue
+                                    st.session_state["turnstile_verified_at"] = datetime.utcnow().isoformat()
+                                    st.success("Turnstile 検証に成功しました（自動）。")
+                                else:
+                                    st.error("Turnstile の検証に失敗しました。投稿はブロックされました。")
                                     submitted = False
                             else:
                                 st.error("このブラウザは Turnstile 未検証です。サイドバーで検証してから再度送信してください。")
