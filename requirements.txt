@@ -1,2 +1,6 @@
 streamlit>=1.31
-python-dotenv>=1.0
+python-dotenv==1.0.0
+requests>=2.28
+# Use passlib with argon2 support for password hashing
+passlib[argon2]>=1.7
+argon2-cffi>=21.3.0

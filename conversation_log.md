@@ -59,31 +59,25 @@
 
 ```toml
 [server]
-headless = true
 port = 8501
 address = "0.0.0.0"
 
-[browser]
 gatherUsageStats = false
 ```
 
 
-## 追記: デプロイ完了と公開 URL（2025-11-09）
 
 - デプロイ結果: Cloud Run へ正常にデプロイされ、サービスが起動していることを確認しました。
 - 公開 URL: https://cocock-app-glu6jfnzpq-an.a.run.app
-- 確認方法と結果:
    - HTTP ヘッダ取得: HTTP/2 200 OK が返りました（Content-Type: text/html）。
    - HTML 取得: Streamlit の標準 HTML ページが返っており、クライアント側で JavaScript によるレンダリングが行われます。
 
 この URL はブラウザでアクセスしてアプリの UI（一覧、登録フォーム、画像アップロードなど）を確認できます。
-
 運用上の注意:
 - 今回はトラブルシュートのため一時的に閲覧系ロールを付与してデプロイを完了させました。本番運用前に IAM の最小権限化（不要なロールの削除）を実施することを推奨します。
 
 (この追記は 2025-11-09 のデプロイ確認を反映しています。)
 
-### デプロイ関連メタ情報
 
 - Git コミット: `ffa9122` (作業ワークスペースで作成・push されたコミット)
 - Push: `origin/main` に push 済み（コミット `ffa9122` を含む）
@@ -96,25 +90,19 @@ gatherUsageStats = false
    - 削除したロール: `roles/viewer`, `roles/logging.viewer`, `roles/cloudbuild.builds.viewer`
    - 削除した強力な権限: `roles/storage.admin` を `cocock-deployer@my-cocock-2025.iam.gserviceaccount.com` から削除しました（下の操作ログ参照）。
    - 残したロール（主要）: `roles/cloudbuild.builds.builder`, `roles/artifactregistry.writer`, `roles/iam.serviceAccountUser`, `roles/run.admin`。
-
 注意: `roles/storage.admin` の削除は、Artifact Registry / Cloud Build の動作に影響を与えないことを確認済みです。必要に応じてより限定的なストレージ権限（例: `roles/storage.objectAdmin`）を後から付与する案もあります。
 
 (この節は 2025-11-09 に実施した IAM 最小化の記録です。)
 
- 
 ## 追記: Cloud Run デプロイ用スクリプト追加 (2025-11-09)
 
 ### 追記: CI 用デプロイスクリプト追加 (2025-11-09)
    - 必須: `PROJECT_ID` と `SERVICE_ACCOUNT_KEY_BASE64` または `GOOGLE_APPLICATION_CREDENTIALS`。
-   - 任意: `TAG`（デフォルト v0.2）、`REGION`（デフォルト asia-northeast1）、`SERVICE_NAME`（デフォルト cocock-app）。
    - スクリプトはビルド→デプロイを実行し、標準出力に `CLOUD_RUN_URL=<url>` を出力します。
 
 (CI 実行例や GitHub Actions の雛形は `README.md` の該当セクションに記載しています。)
 
 
-## 追記: GCP プロジェクト作成と CI 実行の記録 (2025-11-09)
-
-   - Billing アカウント `01571C-60D79C-640CCA` をプロジェクトにリンクしました。
    - 必要な API を有効化しました: Cloud Run / Cloud Build / Artifact Registry / Storage / IAM / Cloud Resource Manager 等。
 
    - 名前: `cocock-deployer@my-cocock-2025.iam.gserviceaccount.com`
